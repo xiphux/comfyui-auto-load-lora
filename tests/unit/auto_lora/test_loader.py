@@ -35,8 +35,8 @@ class FakeBackend:
 
     def apply(self, model, clip, lora, strength_model, strength_clip, metadata):
         self.applies.append((lora, strength_model, strength_clip, metadata))
-        new_clip = None if clip is None else clip + [lora]
-        return model + [lora], new_clip
+        new_clip = None if clip is None else [*clip, lora]
+        return [*model, lora], new_clip
 
 
 def match(lora, strength=1.0, text="trigger"):
@@ -51,24 +51,25 @@ def backend(tmp_path):
     )
 
 
-class TestResolveLoraName:
-    available = ["a.safetensors", "chars/b.safetensors", "chars\\d.safetensors"]
+AVAILABLE = ["a.safetensors", "chars/b.safetensors", "chars\\d.safetensors"]
 
+
+class TestResolveLoraName:
     def test_exact(self):
-        assert resolve_lora_name("chars/b.safetensors", self.available) == "chars/b.safetensors"
+        assert resolve_lora_name("chars/b.safetensors", AVAILABLE) == "chars/b.safetensors"
 
     def test_backslash_separators(self):
-        assert resolve_lora_name("chars\\b.safetensors", self.available) == "chars/b.safetensors"
-        assert resolve_lora_name("chars/d.safetensors", self.available) == "chars\\d.safetensors"
+        assert resolve_lora_name("chars\\b.safetensors", AVAILABLE) == "chars/b.safetensors"
+        assert resolve_lora_name("chars/d.safetensors", AVAILABLE) == "chars\\d.safetensors"
 
     def test_different_folder(self):
-        assert resolve_lora_name("old/b.safetensors", self.available) == "chars/b.safetensors"
+        assert resolve_lora_name("old/b.safetensors", AVAILABLE) == "chars/b.safetensors"
 
     def test_missing_extension(self):
-        assert resolve_lora_name("b", self.available) == "chars/b.safetensors"
+        assert resolve_lora_name("b", AVAILABLE) == "chars/b.safetensors"
 
     def test_not_found(self):
-        assert resolve_lora_name("zzz.safetensors", self.available) is None
+        assert resolve_lora_name("zzz.safetensors", AVAILABLE) is None
 
     def test_exact_beats_basename(self):
         available = ["x/a.safetensors", "a.safetensors"]
@@ -122,17 +123,18 @@ class TestApplyMatches:
 
     def test_applies_in_order(self, backend):
         result = apply_matches(
-            ["base"], ["clip"],
+            ["base"],
+            ["clip"],
             [match("a.safetensors", 0.5, "alice"), match("chars/b.safetensors", 1.0, "bob")],
-            backend, LoraCache(),
+            backend,
+            LoraCache(),
         )
         assert result.model == ["base", "sd:a.safetensors", "sd:b.safetensors"]
         assert result.clip == ["clip", "sd:a.safetensors", "sd:b.safetensors"]
         assert [(a[1], a[2]) for a in backend.applies] == [(0.5, 0.5), (1.0, 1.0)]
         assert backend.applies[0][3] == {"file": "a.safetensors"}
         assert result.summary() == (
-            'a.safetensors @ 0.5 (matched "alice")\n'
-            'chars/b.safetensors @ 1 (matched "bob")'
+            'a.safetensors @ 0.5 (matched "alice")\nchars/b.safetensors @ 1 (matched "bob")'
         )
 
     def test_without_clip_uses_zero_clip_strength(self, backend):
@@ -152,9 +154,11 @@ class TestApplyMatches:
 
     def test_missing_file_warns_and_continues(self, backend, caplog):
         result = apply_matches(
-            ["base"], None,
+            ["base"],
+            None,
             [match("gone.safetensors"), match("a.safetensors")],
-            backend, LoraCache(),
+            backend,
+            LoraCache(),
         )
         assert result.model == ["base", "sd:a.safetensors"]
         assert result.warnings == ["LoRA file not found: gone.safetensors"]
@@ -164,9 +168,11 @@ class TestApplyMatches:
     def test_load_failure_warns_and_continues(self, backend):
         backend.fail_on.add("a.safetensors")
         result = apply_matches(
-            ["base"], None,
+            ["base"],
+            None,
             [match("a.safetensors"), match("chars/b.safetensors")],
-            backend, LoraCache(),
+            backend,
+            LoraCache(),
         )
         assert result.model == ["base", "sd:b.safetensors"]
         assert result.warnings == ["could not load a.safetensors: corrupt file"]

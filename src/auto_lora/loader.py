@@ -25,8 +25,15 @@ class Backend(Protocol):
     def list_loras(self) -> list[str]: ...
     def full_path(self, name: str) -> str | None: ...
     def load_file(self, path: str) -> tuple[Any, Any]: ...
-    def apply(self, model: Any, clip: Any, lora: Any, strength_model: float,
-              strength_clip: float, metadata: Any) -> tuple[Any, Any]: ...
+    def apply(
+        self,
+        model: Any,
+        clip: Any,
+        lora: Any,
+        strength_model: float,
+        strength_clip: float,
+        metadata: Any,
+    ) -> tuple[Any, Any]: ...
 
 
 class ComfyBackend:
@@ -133,8 +140,9 @@ class ApplyResult:
         return "\n".join(lines)
 
 
-def apply_matches(model: Any, clip: Any, matches: list[Match], backend: Backend,
-                  cache: LoraCache) -> ApplyResult:
+def apply_matches(
+    model: Any, clip: Any, matches: list[Match], backend: Backend, cache: LoraCache
+) -> ApplyResult:
     """Apply each matched LoRA in order. Problems are warnings, never errors."""
     result = ApplyResult(model=model, clip=clip)
     if not matches:
@@ -162,7 +170,7 @@ def apply_matches(model: Any, clip: Any, matches: list[Match], backend: Backend,
         result.model, result.clip = backend.apply(
             result.model, result.clip, lora, row.strength, strength_clip, metadata
         )
-        result.applied.append(f"{name} @ {row.strength:g} (matched \"{match.matched_text}\")")
+        result.applied.append(f'{name} @ {row.strength:g} (matched "{match.matched_text}")')
 
     for warning in result.warnings:
         log.warning("%s %s", LOG_PREFIX, warning)

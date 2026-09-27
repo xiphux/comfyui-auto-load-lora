@@ -8,9 +8,6 @@ requires-python = ">=3.10"
 dependencies = []
 classifiers = ["Operating System :: OS Independent"]
 
-[project.optional-dependencies]
-dev = ["pytest>=8"]
-
 [project.urls]
 Repository = "https://github.com/xiphux/comfyui-auto-load-lora"
 
@@ -18,6 +15,38 @@ Repository = "https://github.com/xiphux/comfyui-auto-load-lora"
 PublisherId = "xiphux"
 DisplayName = "Auto LoRA Loader"
 # Icon = "https://.../icon.png"  (optional; add before publishing)
+
+# Development tools only. The node itself has no runtime dependencies beyond
+# what ComfyUI provides, so [project].dependencies stays empty.
+[dependency-groups]
+dev = [
+  "pytest>=9.1.1",
+  "ruff>=0.16.9",
+]
+
+[tool.uv]
+# A ComfyUI node pack is loaded from custom_nodes/, not installed; don't build it.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W",   # pycodestyle / pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "B",   # bugbear
+  "C4",  # comprehensions
+  "SIM", # simplify
+  "RUF", # ruff-specific
+]
+ignore = [
+  "E501", # line length handled by formatter
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]

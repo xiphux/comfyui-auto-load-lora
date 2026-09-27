@@ -19,7 +19,11 @@ behavior and usage.
 
 ## Commands
 
-- Tests: `.venv/bin/pytest` (create with `python3 -m venv .venv && .venv/bin/pip install pytest`)
+- Setup: `uv sync`
+- Tests: `uv run pytest`
+- Lint/format: `uv run ruff check .` and `uv run ruff format .` (CI enforces both)
+- After editing dev dependencies in pyproject.toml, run `uv lock` (CI uses `uv sync --locked`)
+- Keep `[project].dependencies` empty unless a runtime dependency is truly needed; ComfyUI-Manager installs from it
 
 ## Constraints
 

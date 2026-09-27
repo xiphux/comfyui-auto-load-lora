@@ -1,0 +1,105 @@
+# CI: lint, tests, and a security lint of the workflows themselves.
+#
+# Triggers:
+#   - Pushes to `main`, so direct commits there are checked.
+#   - Every pull request (including Renovate's), which drives the PR checks
+#     that branch protection requires before auto-merge.
+# Pushes to other branches don't run on their own: a branch with a PR is
+# checked by the `pull_request` run, which tests the merge result.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per ref; a newer push cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+# Every job sets `timeout-minutes`, a few times its normal duration: GitHub's
+# default is 6 hours, which is how long a hang would otherwise hold a runner
+# (and a Renovate PR's verdict).
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      # --locked, not --frozen: fail if uv.lock no longer matches
+      # pyproject.toml, so a hand edit committed without `uv lock` is caught.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: ruff check
+        run: uv run --frozen ruff check --output-format=github .
+
+      - name: ruff format
+        if: ${{ !cancelled() }}
+        run: uv run --frozen ruff format --check .
+
+      # The frontend has no test suite; at least catch syntax errors. Copied to
+      # .mjs so Node parses it as an ES module regardless of its version.
+      - name: JavaScript syntax
+        if: ${{ !cancelled() }}
+        run: |
+          cp src/web/auto_lora.js "$RUNNER_TEMP/auto_lora.mjs"
+          node --check "$RUNNER_TEMP/auto_lora.mjs"
+
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest version requires-python allows, and the newest.
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: pytest
+        run: uv run --frozen pytest -v
+
+  zizmor:
+    name: Workflow security lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Online audits use the job's read-only token to verify that each SHA pin
+      # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
+      # Annotations instead of SARIF upload: no `security-events: write` needed.
+      # `version` must be one the pinned action release knows; bump them together.
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: 1.30.1
+          advanced-security: false
+          annotations: true

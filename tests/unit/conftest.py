@@ -49,7 +49,9 @@ def _install_comfy_api_stub():
     comfy_api = types.ModuleType("comfy_api")
     comfy_api.latest = latest
 
-    sys.modules.update({"comfy_api": comfy_api, "comfy_api.latest": latest, "comfy_api.latest.io": io})
+    sys.modules.update(
+        {"comfy_api": comfy_api, "comfy_api.latest": latest, "comfy_api.latest.io": io}
+    )
 
 
 if "comfy_api" not in sys.modules:

@@ -24,7 +24,7 @@ class FakeBackend:
 
     def apply(self, model, clip, lora, strength_model, strength_clip, metadata):
         self.applied.append((lora, strength_model))
-        return model + [lora], clip
+        return [*model, lora], clip
 
 
 class NoStatCache(LoraCache):
@@ -40,13 +40,19 @@ def backend(monkeypatch):
     return fake
 
 
-ROWS = json.dumps([
-    {"lora": "elara.safetensors", "triggers": "Elara Voss", "strength": 1.0, "enabled": True},
-    {"lora": "kael.safetensors", "triggers": "kaelen thorne, kael thorne",
-     "strength": 0.8, "enabled": True},
-    {"lora": "missing.safetensors", "triggers": "ghost", "strength": 1.0, "enabled": True},
-    {"lora": "kael.safetensors", "triggers": "(bad", "regex": True},
-])
+ROWS = json.dumps(
+    [
+        {"lora": "elara.safetensors", "triggers": "Elara Voss", "strength": 1.0, "enabled": True},
+        {
+            "lora": "kael.safetensors",
+            "triggers": "kaelen thorne, kael thorne",
+            "strength": 0.8,
+            "enabled": True,
+        },
+        {"lora": "missing.safetensors", "triggers": "ghost", "strength": 1.0, "enabled": True},
+        {"lora": "kael.safetensors", "triggers": "(bad", "regex": True},
+    ]
+)
 
 
 def run(text, loras=ROWS, clip=None):

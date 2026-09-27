@@ -94,11 +94,20 @@ workflows exported from ComfyUI already contain them. To build one by hand:
 
 ## Development
 
+Uses [uv](https://docs.astral.sh/uv/). The node has no runtime dependencies; pytest and
+ruff are dev-only.
+
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install pytest
-.venv/bin/pytest
+uv sync                 # create .venv with the dev tools
+uv run pytest           # tests
+uv run ruff check .     # lint
+uv run ruff format .    # format
 ```
+
+CI (`.github/workflows/ci.yml`) runs ruff, a JavaScript syntax check, the tests on
+Python 3.10 and 3.14, and zizmor over the workflows. Renovate
+(`.github/renovate.json5`) keeps `uv.lock` and the pinned actions current, auto-merging
+patch/minor updates once CI passes.
 
 Layout:
 

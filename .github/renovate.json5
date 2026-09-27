@@ -1,0 +1,87 @@
+{
+	// Keeps the dev dependencies (uv.lock) and the SHA-pinned GitHub Actions
+	// current. The node itself has no runtime dependencies. A slimmed-down
+	// version of the config in openai-api-bridge.
+	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
+
+	extends: ['config:recommended'],
+
+	// Rebase whenever a branch falls behind main, not only when it conflicts.
+	rebaseWhen: 'behind-base-branch',
+
+	// Most malicious PyPI publishes and hijacked action tags are found and pulled
+	// within days, and most of these merge unattended.
+	minimumReleaseAge: '7 days',
+
+	dependencyDashboard: true,
+
+	automergeStrategy: 'merge',
+	// GitHub's own auto-merge, so a PR lands the moment its required checks
+	// pass. Needs branch protection with required checks on `main`; without
+	// them GitHub declines to arm it and Renovate merges during its own run.
+	platformAutomerge: true,
+
+	commitMessagePrefix: 'deps:',
+	labels: ['dependencies'],
+
+	packageRules: [
+		{
+			// pyproject.toml states floors (`ruff>=0.16.9`) and uv.lock states what
+			// is installed. The default `auto` strategy changes nothing when an
+			// update already satisfies an open-ended floor, so it would raise
+			// almost no PRs; `update-lockfile` moves the lock instead.
+			matchManagers: ['pep621'],
+			rangeStrategy: 'update-lockfile',
+		},
+		{
+			matchManagers: ['pep621'],
+			matchDepTypes: ['dependency-groups'],
+			commitMessagePrefix: 'deps(dev):',
+		},
+		{
+			matchManagers: ['github-actions'],
+			commitMessagePrefix: 'ci:',
+		},
+
+		// What auto-merges: patch and minor, except minors of 0.x packages;
+		// majors and prereleases never.
+		{
+			matchUpdateTypes: ['patch', 'minor'],
+			automerge: true,
+		},
+		{
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			automerge: false,
+		},
+		{
+			// ruff is 0.x, but CI judges its minors directly: a new rule or
+			// formatting change fails the lint job rather than slipping through.
+			matchPackageNames: ['ruff'],
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			automerge: true,
+		},
+		{
+			matchUpdateTypes: ['major'],
+			// A major never auto-merges, so rebasing it on every unrelated merge
+			// just re-runs CI on a PR nobody is about to land.
+			rebaseWhen: 'conflicted',
+			automerge: false,
+		},
+		{
+			matchCurrentVersion: '/-/',
+			automerge: false,
+		},
+	],
+
+	// Renovate's own vulnerability source (osv.dev), independent of whether the
+	// Renovate app can read this repository's Dependabot alerts.
+	osvVulnerabilityAlerts: true,
+
+	// A vulnerable package is proposed regardless of the cooldown above.
+	vulnerabilityAlerts: {
+		minimumReleaseAge: null,
+		automerge: false,
+	},
+}

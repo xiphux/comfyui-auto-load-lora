@@ -7,4 +7,4 @@ WEB_DIRECTORY = "./src/web"
 if __package__:
     from .src.auto_lora.node import comfy_entrypoint
 
-    __all__ = ["comfy_entrypoint", "WEB_DIRECTORY"]
+    __all__ = ["WEB_DIRECTORY", "comfy_entrypoint"]
