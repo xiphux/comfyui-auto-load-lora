@@ -1,0 +1,25 @@
+[project]
+name = "auto-lora-loader"
+version = "0.1.0"
+description = "Automatically applies LoRAs when trigger words you define for them appear in the prompt."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+classifiers = ["Operating System :: OS Independent"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/xiphux/comfyui-auto-load-lora"
+
+[tool.comfy]
+PublisherId = "xiphux"
+DisplayName = "Auto LoRA Loader"
+# Icon = "https://.../icon.png"  (optional; add before publishing)
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+addopts = "--import-mode=importlib"

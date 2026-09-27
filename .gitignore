@@ -1,0 +1,18 @@
+# Model weights (never commit)
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Env
+.env
+
+.DS_Store
+dist/
+node_modules/
