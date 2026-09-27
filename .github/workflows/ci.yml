@@ -60,7 +60,7 @@ jobs:
           node --check "$RUNNER_TEMP/auto_lora.mjs"
 
   tests:
-    name: Tests (Python ${{ matrix.python-version }})
+    name: pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -83,6 +83,33 @@ jobs:
 
       - name: pytest
         run: uv run --frozen pytest -v
+
+  # A stable check name for "did the test matrix pass?", which is what a required
+  # status check needs and what `tests` cannot provide. GitHub names a matrix
+  # job's check runs after its values -- `pytest (Python 3.10)`, and so on --
+  # while a required check names one fixed string in the repository settings,
+  # where nothing links it to this file. So the day the matrix changes, the old
+  # names stop being reported and the required check waits for them forever.
+  # Requiring `Tests` instead leaves the matrix free to move.
+  #
+  # It is not a second opinion on the tests: it reads `needs.tests.result` and
+  # nothing else, and fails closed on anything but `success`. `always()` rather
+  # than `!cancelled()`: GitHub counts a SKIPPED required check as passing, so
+  # this must always run and report, even when the matrix was cancelled.
+  test-result:
+    name: Tests
+    needs: tests
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every Python version passed
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: |
+          set -euo pipefail
+          echo "tests: ${RESULT}"
+          test "${RESULT}" = "success"
 
   zizmor:
     name: Workflow security lint
