@@ -9,15 +9,17 @@ const WIDGET_TYPE = "AUTO_LORA_ROWS"; // must match ROWS_WIDGET_TYPE in node.py
 const PRESET_DIR = "auto_lora_presets";
 const TRIGGER_METADATA_KEY = "modelspec.trigger_phrase";
 
-// Rough layout metrics used to size the widget on the litegraph canvas.
-const HEADER_HEIGHT = 34;
-const ROW_HEIGHT = 64;
-const FOOTER_HEIGHT = 36;
-const MIN_WIDTH = 440;
+// Widget sizing on the litegraph canvas. The real content height is measured;
+// the estimates are only used before the element has been laid out.
+const MARGIN = 6;
+const EST_BAR_HEIGHT = 26;
+const EST_ROW_HEIGHT = 26;
+const MIN_WIDTH = 640;
 
 const STYLE = `
-.auto-lora { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
-  color: var(--input-text, #ddd); box-sizing: border-box; width: 100%; overflow-y: auto; }
+.auto-lora { font-size: 12px; color: var(--input-text, #ddd); box-sizing: border-box;
+  width: 100%; overflow-y: auto; }
+.auto-lora-content { display: flex; flex-direction: column; gap: 4px; }
 .auto-lora * { box-sizing: border-box; font: inherit; }
 .auto-lora input, .auto-lora select, .auto-lora button {
   background: var(--comfy-input-bg, #222); color: var(--input-text, #ddd);
@@ -26,15 +28,17 @@ const STYLE = `
 .auto-lora button:hover { filter: brightness(1.2); }
 .auto-lora-bar { display: flex; gap: 4px; align-items: center; }
 .auto-lora-bar select { flex: 1; }
-.auto-lora-row { display: flex; flex-direction: column; gap: 3px; padding: 4px;
-  border: 1px solid var(--border-color, #444); border-radius: 6px; }
-.auto-lora-row.disabled { opacity: 0.5; }
-.auto-lora-line { display: flex; gap: 4px; align-items: center; }
-.auto-lora-line .lora { flex: 1; }
-.auto-lora-line .triggers { flex: 1; }
-.auto-lora-line .strength { width: 56px; }
-.auto-lora-line label { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
-.auto-lora-line .icon { width: 22px; padding: 2px 0; text-align: center; }
+.auto-lora-rows { display: flex; flex-direction: column; gap: 3px; }
+/* Every row (and the column header) shares one template so the columns line up:
+   enabled | LoRA | triggers | regex | strength | up | down | remove */
+.auto-lora-row { display: grid; gap: 4px; align-items: center;
+  grid-template-columns: 16px minmax(140px, 1.4fr) minmax(120px, 1fr) 22px 56px 22px 22px 22px; }
+.auto-lora-row.disabled > :not(.enabled) { opacity: 0.5; }
+.auto-lora-row input[type=checkbox] { margin: 0; justify-self: center; }
+.auto-lora-head { opacity: 0.6; font-size: 11px; }
+.auto-lora-head > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.auto-lora-head .center { text-align: center; }
+.auto-lora .icon { width: 22px; padding: 2px 0; text-align: center; }
 .auto-lora .invalid { border-color: var(--error-text, #f55); }
 .auto-lora .missing { color: var(--error-text, #f55); }
 .auto-lora-empty { opacity: 0.6; text-align: center; padding: 6px; }
@@ -194,6 +198,7 @@ function createRowsWidget(node, inputName, inputData) {
   let loras = [];
 
   const container = el("div", { class: "auto-lora" });
+  const content = el("div", { class: "auto-lora-content" });
   const presetSelect = el("select", { title: "Saved presets" });
   const rowList = el("div", { class: "auto-lora-rows" });
 
@@ -203,19 +208,38 @@ function createRowsWidget(node, inputName, inputData) {
       rows = parseRows(value);
       render();
     },
-    getMinHeight: () => HEADER_HEIGHT + FOOTER_HEIGHT + Math.max(rows.length, 1) * ROW_HEIGHT,
+    margin: MARGIN,
+    getMinHeight: contentHeight,
+    getMaxHeight: contentHeight,
   });
+
+  // ComfyUI sizes DOM widgets as `(widget.width ?? node.width) - margin * 2`. Some other
+  // extensions assign widget.width, which would pin the editor to a fixed width while the
+  // node is resized; ignore such assignments so the editor always follows the node.
+  Object.defineProperty(widget, "width", { configurable: true, get: () => undefined, set: () => {} });
+
+  // Height the widget needs: the rendered content if it has been laid out, otherwise an estimate.
+  function contentHeight() {
+    const measured = content.offsetHeight;
+    const estimate = EST_BAR_HEIGHT * 2 + EST_ROW_HEIGHT * (rows.length + 1);
+    return (measured > 0 ? measured : estimate) + 2 * MARGIN;
+  }
 
   function changed() {
     widget.callback?.(widget.value);
     node.graph?.setDirtyCanvas?.(true, true);
   }
 
+  // Snap the node's height to its content (growing or shrinking) after the DOM updates.
   function fitNode() {
-    if (!node.computeSize || !node.setSize) return;
-    const needed = node.computeSize();
-    if (node.size[1] < needed[1]) node.setSize([node.size[0], needed[1]]);
-    node.graph?.setDirtyCanvas?.(true, true);
+    requestAnimationFrame(() => {
+      if (!node.computeSize || !node.setSize) return;
+      // Workflows saved with an older, narrower layout are widened too.
+      const width = Math.max(node.size[0], MIN_WIDTH);
+      const height = node.computeSize()[1];
+      if (width !== node.size[0] || Math.abs(node.size[1] - height) > 1) node.setSize([width, height]);
+      node.graph?.setDirtyCanvas?.(true, true);
+    });
   }
 
   function update(index, patch) {
@@ -278,13 +302,17 @@ function createRowsWidget(node, inputName, inputData) {
       update(index, { strength: Number.isFinite(value) ? value : 1.0 });
     });
 
-    const enabled = el("input", { type: "checkbox", checked: row.enabled, title: "Enabled" });
+    const enabled = el("input", { class: "enabled", type: "checkbox", checked: row.enabled, title: "Enabled" });
     enabled.addEventListener("change", () => {
       update(index, { enabled: enabled.checked });
       render();
     });
 
-    const regex = el("input", { type: "checkbox", checked: row.regex });
+    const regex = el("input", {
+      type: "checkbox",
+      checked: row.regex,
+      title: "Treat the triggers as one regular expression",
+    });
     regex.addEventListener("change", () => {
       update(index, { regex: regex.checked });
       render();
@@ -307,35 +335,39 @@ function createRowsWidget(node, inputName, inputData) {
     return el(
       "div",
       { class: `auto-lora-row${row.enabled ? "" : " disabled"}` },
-      el(
-        "div",
-        { class: "auto-lora-line" },
-        enabled,
-        loraSelect,
-        strength,
-        el("button", { class: "icon", textContent: "↑", title: "Move up", disabled: index === 0, onclick: () => move(-1) }),
-        el("button", {
-          class: "icon",
-          textContent: "↓",
-          title: "Move down",
-          disabled: index === rows.length - 1,
-          onclick: () => move(1),
-        }),
-        el("button", { class: "icon", textContent: "✕", title: "Remove", onclick: remove })
-      ),
-      el(
-        "div",
-        { class: "auto-lora-line" },
-        triggers,
-        el("label", { title: "Treat the trigger field as one regular expression" }, regex, "regex")
-      )
+      enabled,
+      loraSelect,
+      triggers,
+      regex,
+      strength,
+      el("button", { class: "icon", textContent: "↑", title: "Move up", disabled: index === 0, onclick: () => move(-1) }),
+      el("button", {
+        class: "icon",
+        textContent: "↓",
+        title: "Move down",
+        disabled: index === rows.length - 1,
+        onclick: () => move(1),
+      }),
+      el("button", { class: "icon", textContent: "✕", title: "Remove", onclick: remove })
+    );
+  }
+
+  function renderHeader() {
+    return el(
+      "div",
+      { class: "auto-lora-row auto-lora-head" },
+      el("span"),
+      el("span", { textContent: "LoRA" }),
+      el("span", { textContent: "Triggers" }),
+      el("span", { class: "center", textContent: ".*", title: "Regex" }),
+      el("span", { textContent: "Strength" })
     );
   }
 
   function render() {
     rowList.replaceChildren(
       ...(rows.length
-        ? rows.map(renderRow)
+        ? [renderHeader(), ...rows.map(renderRow)]
         : [el("div", { class: "auto-lora-empty", textContent: "No LoRAs configured. Click “Add LoRA”." })])
     );
     fitNode();
@@ -392,7 +424,7 @@ function createRowsWidget(node, inputName, inputData) {
     render();
   }
 
-  container.append(
+  content.append(
     el(
       "div",
       { class: "auto-lora-bar" },
@@ -417,6 +449,7 @@ function createRowsWidget(node, inputName, inputData) {
       el("button", { class: "icon", textContent: "⟳", title: "Refresh LoRA and preset lists", onclick: onRefresh })
     )
   );
+  container.append(content);
 
   render();
   getLoraList().then((list) => {
@@ -425,7 +458,6 @@ function createRowsWidget(node, inputName, inputData) {
   });
   refreshPresets();
 
-  if (node.size[0] < MIN_WIDTH) node.setSize?.([MIN_WIDTH, node.size[1]]);
   return { widget, minWidth: MIN_WIDTH };
 }
 
