@@ -1,0 +1,73 @@
+# Wake Renovate after a push to main.
+#
+# Why this exists: branch protection requires a pull request to be up to date
+# with main before it merges, and Renovate brings one up to date only while a
+# job is running. On the Mend Community plan jobs are scheduled every 4 hours,
+# and a merge -- GitHub's auto-merge included -- enqueues no job of its own. So
+# every merge would leave the remaining Renovate PRs unmergeable until the next
+# scheduled run, which lets one more through and strands the rest again.
+#
+# How it works: Mend does enqueue a job for actions taken on the Dependency
+# Dashboard, which carries a checkbox for exactly that. Ticking it from
+# `github-actions[bot]` produces a job within a couple of minutes, as it does
+# in the sibling repositories this was copied from (openai-api-bridge,
+# glyphstream).
+#
+# Loop safety: this only ticks a box. Renovate's run unticks it, and a run that
+# merges nothing leads to no further push, so the chain ends on its own.
+name: Nudge Renovate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # One at a time: a burst of merges needs one wake-up, not one each.
+  group: renovate-nudge
+  cancel-in-progress: false
+
+jobs:
+  nudge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tick the Dependency Dashboard's run checkbox
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # The dashboard is the open issue Renovate itself opened. Matching on
+          # author as well as title so a same-named issue by anyone else is
+          # ignored.
+          issue=$(gh issue list --repo "$REPO" --state open --limit 50 \
+            --json number,title,author \
+            --jq '[.[] | select(.author.login == "app/renovate"
+                                and (.title | ascii_downcase | startswith("dependency dashboard")))]
+                  | first | .number // empty')
+
+          if [ -z "$issue" ]; then
+            echo "No Renovate dependency dashboard issue found - nothing to nudge."
+            exit 0
+          fi
+
+          body=$(gh issue view "$issue" --repo "$REPO" --json body --jq .body)
+
+          # An unticked box is the only case worth acting on: ticked already
+          # means a run is pending, and an absent box means this dashboard has
+          # no manual trigger (Renovate omits it while a job is queued).
+          if ! printf '%s' "$body" | grep -qF -- '- [ ] <!-- manual job -->'; then
+            echo "Dashboard #$issue has no unticked run checkbox - nothing to do."
+            exit 0
+          fi
+
+          printf '%s' "$body" \
+            | sed 's/- \[ \] <!-- manual job -->/- [x] <!-- manual job -->/' \
+            | gh issue edit "$issue" --repo "$REPO" --body-file -
+
+          echo "Ticked the run checkbox on dashboard #$issue."
