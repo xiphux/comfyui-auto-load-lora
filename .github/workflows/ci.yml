@@ -111,6 +111,8 @@ jobs:
           echo "tests: ${RESULT}"
           test "${RESULT}" = "success"
 
+  # Named for the check branch protection requires, which predates actionlint
+  # joining zizmor here; renaming it means updating the required check too.
   zizmor:
     name: Workflow security lint
     runs-on: ubuntu-latest
@@ -120,11 +122,30 @@ jobs:
         with:
           persist-credentials: false
 
+      # Correctness, where zizmor is security: expression and type errors, a
+      # `needs` naming no job, and shellcheck over every `run:` script (with the
+      # runner image's preinstalled shellcheck). The release binary from GitHub,
+      # checksum-pinned, rather than the Docker Hub image, whose anonymous pulls
+      # are rate-limited per IP on shared runners. Bump the version and checksum
+      # together, from the release's checksums.txt.
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
       # Online audits use the job's read-only token to verify that each SHA pin
       # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
       # Annotations instead of SARIF upload: no `security-events: write` needed.
       # `version` must be one the pinned action release knows; bump them together.
       - name: zizmor
+        if: ${{ !cancelled() }}
         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           version: 1.30.1
