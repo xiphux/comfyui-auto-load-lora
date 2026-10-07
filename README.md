@@ -106,8 +106,8 @@ uv run ruff format .    # format
 
 CI (`.github/workflows/ci.yml`) runs ruff, a JavaScript syntax check, the tests on
 Python 3.10 and 3.14, and zizmor over the workflows. Renovate
-(`.github/renovate.json5`) keeps `uv.lock` and the pinned actions current, auto-merging
-patch/minor updates once CI passes.
+(`.github/renovate.json5`) keeps `uv.lock` and the pinned actions current on a weekly
+timetable, in groups, auto-merging patch/minor updates once CI passes.
 
 Layout:
 
