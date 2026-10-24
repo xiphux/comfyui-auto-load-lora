@@ -1,4 +1,4 @@
-# CI: lint, tests, and a security lint of the workflows themselves.
+# CI: lint and the workflow linters (one `checks` job), and tests.
 #
 # Triggers:
 #   - Pushes to `main`, so direct commits there are checked.
@@ -26,8 +26,21 @@ permissions:
 # default is 6 hours, which is how long a hang would otherwise hold a runner
 # (and a Renovate PR's verdict).
 jobs:
-  lint:
-    name: Lint
+  # Lint, and the workflow linters, in one job. Each took around ten seconds,
+  # and billing rounds every job up to a whole minute, so as two jobs they
+  # billed two minutes a run for well under one of work. Minutes are free on a
+  # public repository; this keeps it in line with the private ones, where they
+  # are not. The install it needs is two dev tools out of the uv cache, a few
+  # seconds, so folding costs the workflow linters nothing.
+  #
+  # Every check step after the first runs under `!cancelled()`, so one tool's
+  # findings never hide another's for a whole run. The workflow linters need
+  # no install, so they still report when it fails.
+  #
+  # Branch protection requires it by this `name:`; renaming it means updating
+  # the required check too.
+  checks:
+    name: Checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,6 +71,38 @@ jobs:
         run: |
           cp src/web/auto_lora.js "$RUNNER_TEMP/auto_lora.mjs"
           node --check "$RUNNER_TEMP/auto_lora.mjs"
+
+      # The workflows themselves, from here down. actionlint for correctness,
+      # where zizmor is security: expression and type errors, a `needs` naming
+      # no job, and shellcheck over every `run:` script (with the runner
+      # image's preinstalled shellcheck). The release binary from GitHub,
+      # checksum-pinned, rather than the Docker Hub image, whose anonymous
+      # pulls are rate-limited per IP on shared runners. Bump the version and
+      # checksum together, from the release's checksums.txt.
+      - name: actionlint
+        if: ${{ !cancelled() }}
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+      # Online audits use the job's read-only token to verify that each SHA pin
+      # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
+      # Annotations instead of SARIF upload: no `security-events: write` needed.
+      # `version` must be one the pinned action release knows; bump them together.
+      - name: zizmor
+        if: ${{ !cancelled() }}
+        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          version: 1.30.1
+          advanced-security: false
+          annotations: true
 
   tests:
     name: pytest (Python ${{ matrix.python-version }})
@@ -110,44 +155,3 @@ jobs:
           set -euo pipefail
           echo "tests: ${RESULT}"
           test "${RESULT}" = "success"
-
-  # Named for the check branch protection requires, which predates actionlint
-  # joining zizmor here; renaming it means updating the required check too.
-  zizmor:
-    name: Workflow security lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Correctness, where zizmor is security: expression and type errors, a
-      # `needs` naming no job, and shellcheck over every `run:` script (with the
-      # runner image's preinstalled shellcheck). The release binary from GitHub,
-      # checksum-pinned, rather than the Docker Hub image, whose anonymous pulls
-      # are rate-limited per IP on shared runners. Bump the version and checksum
-      # together, from the release's checksums.txt.
-      - name: actionlint
-        env:
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-        run: |
-          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color
-
-      # Online audits use the job's read-only token to verify that each SHA pin
-      # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
-      # Annotations instead of SARIF upload: no `security-events: write` needed.
-      # `version` must be one the pinned action release knows; bump them together.
-      - name: zizmor
-        if: ${{ !cancelled() }}
-        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
-        with:
-          version: 1.30.1
-          advanced-security: false
-          annotations: true

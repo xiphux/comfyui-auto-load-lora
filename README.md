@@ -104,8 +104,9 @@ uv run ruff check .     # lint
 uv run ruff format .    # format
 ```
 
-CI (`.github/workflows/ci.yml`) runs ruff, a JavaScript syntax check, the tests on
-Python 3.10 and 3.14, and zizmor over the workflows. Renovate
+CI (`.github/workflows/ci.yml`) runs ruff, a JavaScript syntax check, and actionlint
+and zizmor over the workflows, all in one `checks` job, and the tests on Python 3.10
+and 3.14. Renovate
 (`.github/renovate.json5`, extending the shared
 [`xiphux/renovate-config`](https://github.com/xiphux/renovate-config) presets) keeps
 `uv.lock` and the pinned actions current on a weekly timetable, in groups, auto-merging
